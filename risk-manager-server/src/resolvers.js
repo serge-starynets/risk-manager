@@ -2,10 +2,13 @@ import mongoose from 'mongoose';
 import { Risk } from './models/risk.js';
 import { Category } from './models/category.js';
 
+const RISKS_LIMIT = 15;
+const CATEGORIES_LIMIT = 15;
+
 export const resolvers = {
 	Query: {
-		risks: async (_, { createdBy, first = 15, after }) => {
-			const limit = Math.min(first || 15, 15);
+		risks: async (_, { createdBy, first = RISKS_LIMIT, after }) => {
+			const limit = Math.min(first || RISKS_LIMIT, RISKS_LIMIT);
 			const query = createdBy ? { createdBy } : {};
 
 			// If cursor is provided, find risks after that cursor
@@ -73,8 +76,8 @@ export const resolvers = {
 			};
 		},
 		risk: async (_, { id }) => await Risk.findById(id),
-		categories: async (_, { createdBy, first = 15, after }) => {
-			const limit = Math.min(first || 15, 15);
+		categories: async (_, { createdBy, first = CATEGORIES_LIMIT, after }) => {
+			const limit = Math.min(first || CATEGORIES_LIMIT, CATEGORIES_LIMIT);
 			const query = createdBy ? { createdBy } : {};
 
 			// If cursor is provided, find categories after that cursor

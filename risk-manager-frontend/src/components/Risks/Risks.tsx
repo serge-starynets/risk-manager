@@ -1,5 +1,7 @@
 import { useState } from 'react';
+import { toast } from 'react-toastify';
 import { useQuery, useMutation } from '@apollo/client/react';
+
 import { GET_RISKS, DELETE_RISK, CREATE_RISK, UPDATE_RISK } from '../../api/queries/riskQueries';
 import { GET_ALL_CATEGORIES } from '../../api/queries/categoryQueries';
 import type { Category, RisksConnection } from '../../api/types';
@@ -7,9 +9,8 @@ import { useUser } from '../../contexts/UserContext';
 import ConfirmDialog from '../ConfirmDialog';
 import AddRiskForm from '../AddRiskForm';
 import { Pagination, usePagination } from '../Pagination';
-import { toast } from 'react-toastify';
-
-const PAGE_SIZE = 15;
+import { EditableCell } from '../EditableCell';
+import { PAGE_SIZE } from '../../constants/constants.ts'
 
 const Risks = () => {
 	const { username } = useUser();
@@ -56,7 +57,11 @@ const Risks = () => {
 
 	const [updateRisk] = useMutation(UPDATE_RISK, {
 		onCompleted: () => {
+			toast.success('Risk updated successfully');
 			refetch();
+		},
+		onError: (error) => {
+			toast.error('Error updating risk: ' + error.message);
 		},
 	});
 
@@ -93,6 +98,26 @@ const Risks = () => {
 			variables: {
 				id: riskId,
 				resolved: !currentStatus,
+			},
+		});
+	};
+
+	const handleNameUpdate = (riskId: string, newName: string) => {
+		if (newName.trim()) {
+			updateRisk({
+				variables: {
+					id: riskId,
+					name: newName.trim(),
+				},
+			});
+		}
+	};
+
+	const handleDescriptionUpdate = (riskId: string, newDescription: string) => {
+		updateRisk({
+			variables: {
+				id: riskId,
+				description: newDescription.trim() || null,
 			},
 		});
 	};
@@ -183,8 +208,8 @@ const Risks = () => {
 						<tr>
 							<th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Name</th>
 							<th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Description</th>
-							<th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Category</th>
-							<th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Status</th>
+							<th className="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider w-32">Category</th>
+							<th className="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider w-28">Status</th>
 							<th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Created By</th>
 							<th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Actions</th>
 						</tr>
@@ -199,10 +224,24 @@ const Risks = () => {
 						) : (
 							risks.map((risk) => (
 								<tr key={risk.id} className="hover:bg-gray-50">
-									<td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">{risk.name}</td>
-									<td className="px-6 py-4 text-sm text-gray-500">{risk.description || '-'}</td>
-									<td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{risk.category?.name || 'no category'}</td>
-									<td className="px-6 py-4 whitespace-nowrap">
+									<td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
+										<EditableCell
+											value={risk.name}
+											onSave={(newValue) => handleNameUpdate(risk.id, newValue)}
+											className="min-w-[150px]"
+											placeholder="Enter risk name"
+										/>
+									</td>
+									<td className="px-6 py-4 text-sm text-gray-500">
+										<EditableCell
+											value={risk.description || ''}
+											onSave={(newValue) => handleDescriptionUpdate(risk.id, newValue)}
+											className="min-w-[200px]"
+											placeholder="Enter description"
+										/>
+									</td>
+									<td className="px-3 py-4 whitespace-nowrap text-sm text-gray-500 w-32">{risk.category?.name || 'no category'}</td>
+									<td className="px-3 py-4 whitespace-nowrap w-28">
 										<span
 											onClick={() => handleStatusToggle(risk.id, risk.resolved)}
 											className={`px-2 inline-flex text-xs leading-5 font-semibold rounded-full cursor-pointer transition-colors hover:opacity-80 ${

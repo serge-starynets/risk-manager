@@ -1,14 +1,15 @@
 import { useState } from 'react';
 import { useQuery, useMutation } from '@apollo/client/react';
-import { GET_CATEGORIES, DELETE_CATEGORY, CREATE_CATEGORY, GET_ALL_CATEGORIES } from '../../api/queries/categoryQueries';
+import { toast } from 'react-toastify';
+
+import { GET_CATEGORIES, DELETE_CATEGORY, CREATE_CATEGORY, UPDATE_CATEGORY, GET_ALL_CATEGORIES } from '../../api/queries/categoryQueries';
 import type { CategoriesConnection } from '../../api/types';
 import { useUser } from '../../contexts/UserContext';
 import ConfirmDialog from '../ConfirmDialog';
 import AddCategoryForm from '../AddCategoryForm';
 import { Pagination, usePagination } from '../Pagination';
-import { toast } from 'react-toastify';
-
-const PAGE_SIZE = 15;
+import { EditableCell } from '../EditableCell';
+import { PAGE_SIZE } from '../../constants/constants.ts'
 
 const Categories = () => {
 	const { username } = useUser();
@@ -46,6 +47,17 @@ const Categories = () => {
 		},
 	});
 
+	const [updateCategory] = useMutation(UPDATE_CATEGORY, {
+		refetchQueries: [{ query: GET_ALL_CATEGORIES }],
+		onCompleted: () => {
+			toast.success('Category updated successfully');
+			refetch();
+		},
+		onError: (error) => {
+			toast.error('Error updating category: ' + error.message);
+		},
+	});
+
 	const handleDeleteClick = (categoryId: string) => {
 		setDeleteCategoryId(categoryId);
 	};
@@ -70,6 +82,26 @@ const Categories = () => {
 				},
 			});
 		}
+	};
+
+	const handleNameUpdate = (categoryId: string, newName: string) => {
+		if (newName.trim()) {
+			updateCategory({
+				variables: {
+					id: categoryId,
+					name: newName.trim(),
+				},
+			});
+		}
+	};
+
+	const handleDescriptionUpdate = (categoryId: string, newDescription: string) => {
+		updateCategory({
+			variables: {
+				id: categoryId,
+				description: newDescription.trim() || null,
+			},
+		});
 	};
 
 	if (loading) {
@@ -153,8 +185,22 @@ const Categories = () => {
 						) : (
 							categories.map((category) => (
 								<tr key={category.id} className="hover:bg-gray-50">
-									<td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">{category.name}</td>
-									<td className="px-6 py-4 text-sm text-gray-500">{category.description || '-'}</td>
+									<td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
+										<EditableCell
+											value={category.name}
+											onSave={(newValue) => handleNameUpdate(category.id, newValue)}
+											className="min-w-[150px]"
+											placeholder="Enter category name"
+										/>
+									</td>
+									<td className="px-6 py-4 text-sm text-gray-500">
+										<EditableCell
+											value={category.description || ''}
+											onSave={(newValue) => handleDescriptionUpdate(category.id, newValue)}
+											className="min-w-[200px]"
+											placeholder="Enter description"
+										/>
+									</td>
 									<td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{category.createdBy}</td>
 									<td className="px-6 py-4 whitespace-nowrap text-sm">
 										<button

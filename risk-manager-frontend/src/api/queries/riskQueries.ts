@@ -50,8 +50,8 @@ export const CREATE_RISK = gql`
 `;
 
 export const UPDATE_RISK = gql`
-	mutation UpdateRisk($id: ID!, $resolved: Boolean) {
-		updateRisk(id: $id, resolved: $resolved) {
+	mutation UpdateRisk($id: ID!, $name: String, $description: String, $categoryId: ID, $resolved: Boolean) {
+		updateRisk(id: $id, name: $name, description: $description, categoryId: $categoryId, resolved: $resolved) {
 			id
 			name
 			description
