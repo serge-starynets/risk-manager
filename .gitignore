@@ -1,0 +1,7 @@
+.idea
+
+risk-manager-frontend/node_modules
+risk-manager-server/node_modules
+
+risk-manager-frontend/.env
+risk-manager-server/.env
