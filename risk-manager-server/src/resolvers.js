@@ -175,9 +175,10 @@ export const resolvers = {
 
 	Risk: {
 		id: (parent) => parent._id.toString(),
-		category: async (parent) => {
+		category: async (parent, _, context) => {
 			if (!parent.categoryId) return null;
-			return await Category.findById(parent.categoryId);
+			// Use DataLoader to batch category queries and avoid N+1 problem
+			return await context.categoryLoader.load(parent.categoryId);
 		},
 	},
 	Category: {

@@ -6,6 +6,7 @@ import type { Category, RisksConnection } from '../../api/types';
 import { useUser } from '../../contexts/UserContext';
 import ConfirmDialog from '../ConfirmDialog';
 import AddRiskForm from '../AddRiskForm';
+import { Pagination, usePagination } from '../Pagination';
 import { toast } from 'react-toastify';
 
 const PAGE_SIZE = 15;
@@ -16,9 +17,7 @@ const Risks = () => {
 	const [isAddFormOpen, setIsAddFormOpen] = useState(false);
 	const [showOnlyUnresolved, setShowOnlyUnresolved] = useState(false);
 	const [showAllRisks, setShowAllRisks] = useState(false);
-	const [cursor, setCursor] = useState<string | null>(null);
-	const [cursorHistory, setCursorHistory] = useState<string[]>([]);
-	const [currentPage, setCurrentPage] = useState(0);
+	const { cursor, currentPage, canGoPrevious, reset, handleNextPage, handlePreviousPage } = usePagination();
 	const { loading, error, data, refetch } = useQuery<{ risks: RisksConnection }>(GET_RISKS, {
 		variables: { createdBy: showAllRisks ? null : username || null, first: PAGE_SIZE, after: cursor },
 		skip: !username,
@@ -31,10 +30,6 @@ const Risks = () => {
 	const risks = showOnlyUnresolved ? allRisks.filter((risk) => !risk.resolved) : allRisks;
 	const categories = categoriesData?.allCategories || [];
 	const pageInfo = data?.risks?.pageInfo;
-
-	// Calculate the range of items being displayed (1-indexed)
-	const startRange = currentPage * PAGE_SIZE + 1;
-	const endRange = currentPage * PAGE_SIZE + allRisks.length;
 
 	const [deleteRisk] = useMutation(DELETE_RISK, {
 		onCompleted: () => {
@@ -51,9 +46,7 @@ const Risks = () => {
 		onCompleted: () => {
 			setIsAddFormOpen(false);
 			toast.success('Risk created successfully');
-			setCursor(null); // Reset to first page
-			setCursorHistory([]); // Clear history
-			setCurrentPage(0); // Reset to first page
+			reset(); // Reset to first page
 			refetch();
 		},
 		onError: (error) => {
@@ -120,31 +113,14 @@ const Risks = () => {
 		);
 	}
 
-	const handleNextPage = () => {
-		if (pageInfo?.hasNextPage && pageInfo?.endCursor) {
-			// Save current cursor to history before moving forward
-			if (cursor) {
-				setCursorHistory((prev) => [...prev, cursor]);
-			}
-			setCursor(pageInfo.endCursor);
-			setCurrentPage(currentPage + 1);
+	const onNextPage = () => {
+		if (pageInfo) {
+			handleNextPage(pageInfo);
 		}
 	};
 
-	const handlePreviousPage = () => {
-		if (cursorHistory.length > 0) {
-			// Go back to previous cursor
-			const previousCursors = [...cursorHistory];
-			const previousCursor = previousCursors.pop();
-			setCursorHistory(previousCursors);
-			setCursor(previousCursor || null);
-			setCurrentPage(currentPage - 1);
-		} else {
-			// Go back to first page
-			setCursor(null);
-			setCursorHistory([]);
-			setCurrentPage(0);
-		}
+	const onPreviousPage = () => {
+		handlePreviousPage();
 	};
 
 	return (
@@ -170,9 +146,7 @@ const Risks = () => {
 				<button
 					onClick={() => {
 						setShowAllRisks(!showAllRisks);
-						setCursor(null);
-						setCursorHistory([]);
-						setCurrentPage(0);
+						reset();
 					}}
 					className="px-4 py-2 text-sm font-medium text-white bg-green-600 cursor-pointer rounded-md hover:bg-green-700 
 					focus:outline-none focus:ring-2 focus:ring-green-500 focus:ring-offset-2 transition-colors"
@@ -187,9 +161,7 @@ const Risks = () => {
 							checked={showOnlyUnresolved}
 							onChange={(e) => {
 								setShowOnlyUnresolved(e.target.checked);
-								setCursor(null);
-								setCursorHistory([]);
-								setCurrentPage(0);
+								reset();
 							}}
 							className="sr-only"
 						/>
@@ -257,33 +229,17 @@ const Risks = () => {
 					</tbody>
 				</table>
 			</div>
-			{pageInfo && (
-				<div className="mt-4 flex items-center justify-between">
-					<button
-						onClick={handlePreviousPage}
-						disabled={cursor === null && cursorHistory.length === 0}
-						className={`px-4 py-2 text-sm font-medium rounded-md ${
-							cursor !== null || cursorHistory.length > 0
-								? 'bg-blue-600 text-white hover:bg-blue-700 cursor-pointer'
-								: 'bg-gray-300 text-gray-500 cursor-not-allowed'
-						} focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 transition-colors`}
-					>
-						Previous
-					</button>
-					<span className="text-sm text-gray-700">
-						Showing {startRange} - {endRange} of {totalCount} {totalCount === 1 ? 'risk' : 'risks'}
-					</span>
-					<button
-						onClick={handleNextPage}
-						disabled={!pageInfo.hasNextPage}
-						className={`px-4 py-2 text-sm font-medium rounded-md ${
-							pageInfo.hasNextPage ? 'bg-blue-600 text-white hover:bg-blue-700 cursor-pointer' : 'bg-gray-300 text-gray-500 cursor-not-allowed'
-						} focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 transition-colors`}
-					>
-						Next
-					</button>
-				</div>
-			)}
+			<Pagination
+				pageInfo={pageInfo}
+				currentPage={currentPage}
+				pageSize={PAGE_SIZE}
+				totalCount={totalCount}
+				itemCount={allRisks.length}
+				entityName={{ singular: 'risk', plural: 'risks' }}
+				onNext={onNextPage}
+				onPrevious={onPreviousPage}
+				canGoPrevious={canGoPrevious}
+			/>
 		</>
 	);
 };

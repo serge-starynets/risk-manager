@@ -5,6 +5,7 @@ import type { CategoriesConnection } from '../../api/types';
 import { useUser } from '../../contexts/UserContext';
 import ConfirmDialog from '../ConfirmDialog';
 import AddCategoryForm from '../AddCategoryForm';
+import { Pagination, usePagination } from '../Pagination';
 import { toast } from 'react-toastify';
 
 const PAGE_SIZE = 15;
@@ -14,9 +15,7 @@ const Categories = () => {
 	const [deleteCategoryId, setDeleteCategoryId] = useState<string | null>(null);
 	const [isAddFormOpen, setIsAddFormOpen] = useState(false);
 	const [showAllCategories, setShowAllCategories] = useState(false);
-	const [cursor, setCursor] = useState<string | null>(null);
-	const [cursorHistory, setCursorHistory] = useState<string[]>([]);
-	const [currentPage, setCurrentPage] = useState(0);
+	const { cursor, currentPage, canGoPrevious, reset, handleNextPage, handlePreviousPage } = usePagination();
 	const { loading, error, data, refetch } = useQuery<{ categories: CategoriesConnection }>(GET_CATEGORIES, {
 		variables: { createdBy: showAllCategories ? null : username || null, first: PAGE_SIZE, after: cursor },
 		skip: !username,
@@ -39,9 +38,7 @@ const Categories = () => {
 		onCompleted: () => {
 			setIsAddFormOpen(false);
 			toast.success('Category created successfully');
-			setCursor(null);
-			setCursorHistory([]);
-			setCurrentPage(0);
+			reset(); // Reset to first page
 			refetch();
 		},
 		onError: (error) => {
@@ -96,35 +93,14 @@ const Categories = () => {
 	const categories = allCategories;
 	const pageInfo = data?.categories?.pageInfo;
 
-	// Calculate the range of items being displayed (1-indexed)
-	const startRange = currentPage * PAGE_SIZE + 1;
-	const endRange = currentPage * PAGE_SIZE + allCategories.length;
-
-	const handleNextPage = () => {
-		if (pageInfo?.hasNextPage && pageInfo?.endCursor) {
-			// Save current cursor to history before moving forward
-			if (cursor) {
-				setCursorHistory((prev) => [...prev, cursor]);
-			}
-			setCursor(pageInfo.endCursor);
-			setCurrentPage(currentPage + 1);
+	const onNextPage = () => {
+		if (pageInfo) {
+			handleNextPage(pageInfo);
 		}
 	};
 
-	const handlePreviousPage = () => {
-		if (cursorHistory.length > 0) {
-			// Go back to previous cursor
-			const previousCursors = [...cursorHistory];
-			const previousCursor = previousCursors.pop();
-			setCursorHistory(previousCursors);
-			setCursor(previousCursor || null);
-			setCurrentPage(currentPage - 1);
-		} else {
-			// Go back to first page
-			setCursor(null);
-			setCursorHistory([]);
-			setCurrentPage(0);
-		}
+	const onPreviousPage = () => {
+		handlePreviousPage();
 	};
 
 	return (
@@ -149,9 +125,7 @@ const Categories = () => {
 				<button
 					onClick={() => {
 						setShowAllCategories(!showAllCategories);
-						setCursor(null);
-						setCursorHistory([]);
-						setCurrentPage(0);
+						reset();
 					}}
 					className="px-4 py-2 text-sm font-medium text-white bg-green-600 cursor-pointer rounded-md hover:bg-green-700 
 					focus:outline-none focus:ring-2 focus:ring-green-500 focus:ring-offset-2 transition-colors"
@@ -196,33 +170,17 @@ const Categories = () => {
 					</tbody>
 				</table>
 			</div>
-			{
-				<div className="mt-4 flex items-center justify-between">
-					<button
-						onClick={handlePreviousPage}
-						disabled={cursor === null && cursorHistory.length === 0}
-						className={`px-4 py-2 text-sm font-medium rounded-md ${
-							cursor !== null || cursorHistory.length > 0
-								? 'bg-blue-600 text-white hover:bg-blue-700 cursor-pointer'
-								: 'bg-gray-300 text-gray-500 cursor-not-allowed'
-						} focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 transition-colors`}
-					>
-						Previous
-					</button>
-					<span className="text-sm text-gray-700">
-						Showing {startRange} - {endRange} of {totalCount} {totalCount === 1 ? 'category' : 'categories'}
-					</span>
-					<button
-						onClick={handleNextPage}
-						disabled={!pageInfo?.hasNextPage}
-						className={`px-4 py-2 text-sm font-medium rounded-md ${
-							pageInfo?.hasNextPage ? 'bg-blue-600 text-white hover:bg-blue-700 cursor-pointer' : 'bg-gray-300 text-gray-500 cursor-not-allowed'
-						} focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 transition-colors`}
-					>
-						Next
-					</button>
-				</div>
-			}
+			<Pagination
+				pageInfo={pageInfo}
+				currentPage={currentPage}
+				pageSize={PAGE_SIZE}
+				totalCount={totalCount}
+				itemCount={allCategories.length}
+				entityName={{ singular: 'category', plural: 'categories' }}
+				onNext={onNextPage}
+				onPrevious={onPreviousPage}
+				canGoPrevious={canGoPrevious}
+			/>
 		</>
 	);
 };
