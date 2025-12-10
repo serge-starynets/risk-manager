@@ -1,5 +1,5 @@
 import { useState, type FormEvent } from 'react';
-import type { Category } from '../../api/types';
+import type { Category } from '../../api/generated/hooks';
 
 interface AddRiskFormProps {
 	isOpen: boolean;

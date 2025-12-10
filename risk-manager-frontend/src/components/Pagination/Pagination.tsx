@@ -1,4 +1,4 @@
-import type { PageInfo } from '../../api/types';
+import type { PageInfo } from '../../api/generated/hooks';
 
 interface PaginationProps {
 	pageInfo: PageInfo | null | undefined;

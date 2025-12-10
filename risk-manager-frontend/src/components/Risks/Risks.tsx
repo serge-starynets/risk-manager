@@ -1,11 +1,8 @@
 import { useState } from 'react';
 import { NetworkStatus } from '@apollo/client';
 import { toast } from 'react-toastify';
-import { useQuery, useMutation } from '@apollo/client/react';
 
-import { GET_RISKS, DELETE_RISK, CREATE_RISK, UPDATE_RISK } from '../../api/queries/riskQueries';
-import { GET_ALL_CATEGORIES } from '../../api/queries/categoryQueries';
-import type { Category, RisksConnection } from '../../api/types';
+import { useGetRisksQuery, useDeleteRiskMutation, useCreateRiskMutation, useUpdateRiskMutation, useGetAllCategoriesQuery } from '../../api/generated/hooks';
 import { useUser } from '../../contexts/UserContext';
 import ConfirmDialog from '../ConfirmDialog';
 import AddRiskForm from '../AddRiskForm';
@@ -20,13 +17,13 @@ const Risks = () => {
 	const [showOnlyUnresolved, setShowOnlyUnresolved] = useState(false);
 	const [showAllRisks, setShowAllRisks] = useState(false);
 	const { cursor, currentPage, canGoPrevious, reset, handleNextPage, handlePreviousPage } = usePagination();
-	const { loading, error, data, refetch, networkStatus } = useQuery<{ risks: RisksConnection }>(GET_RISKS, {
+	const { loading, error, data, refetch, networkStatus } = useGetRisksQuery({
 		variables: { createdBy: showAllRisks ? null : username || null, first: PAGE_SIZE, after: cursor },
 		skip: !username,
 		notifyOnNetworkStatusChange: true,
 	});
 
-	const { data: categoriesData } = useQuery<{ allCategories: Category[] }>(GET_ALL_CATEGORIES);
+	const { data: categoriesData } = useGetAllCategoriesQuery();
 
 	const allRisks = data?.risks?.edges?.map((edge) => edge.node) || [];
 	const totalCount = data?.risks?.pageInfo?.totalCount || 0;
@@ -38,35 +35,35 @@ const Risks = () => {
 	const isRefetching = networkStatus === NetworkStatus.refetch || networkStatus === NetworkStatus.setVariables;
 	const showSkeleton = isInitialLoading || isRefetching;
 
-	const [deleteRisk] = useMutation(DELETE_RISK, {
+	const [deleteRisk] = useDeleteRiskMutation({
 		onCompleted: () => {
 			setDeleteRiskId(null);
 			toast.success('Risk deleted successfully');
 			refetch();
 		},
-		onError: (error) => {
+		onError: (error: { message: string }) => {
 			toast.error('Error deleting risk: ' + error.message);
 		},
 	});
 
-	const [createRisk] = useMutation(CREATE_RISK, {
+	const [createRisk] = useCreateRiskMutation({
 		onCompleted: () => {
 			setIsAddFormOpen(false);
 			toast.success('Risk created successfully');
 			reset(); // Reset to first page
 			refetch();
 		},
-		onError: (error) => {
+		onError: (error: { message: string }) => {
 			toast.error('Error creating risk: ' + error.message);
 		},
 	});
 
-	const [updateRisk] = useMutation(UPDATE_RISK, {
+	const [updateRisk] = useUpdateRiskMutation({
 		onCompleted: () => {
 			toast.success('Risk updated successfully');
 			refetch();
 		},
-		onError: (error) => {
+		onError: (error: { message: string }) => {
 			toast.error('Error updating risk: ' + error.message);
 		},
 	});
@@ -138,7 +135,10 @@ const Risks = () => {
 
 	const onNextPage = () => {
 		if (pageInfo) {
-			handleNextPage(pageInfo);
+			handleNextPage({
+				hasNextPage: pageInfo.hasNextPage,
+				endCursor: pageInfo.endCursor ?? null,
+			});
 		}
 	};
 

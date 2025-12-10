@@ -1,10 +1,14 @@
 import { useState } from 'react';
 import { NetworkStatus } from '@apollo/client';
-import { useQuery, useMutation } from '@apollo/client/react';
 import { toast } from 'react-toastify';
 
-import { GET_CATEGORIES, DELETE_CATEGORY, CREATE_CATEGORY, UPDATE_CATEGORY, GET_ALL_CATEGORIES } from '../../api/queries/categoryQueries';
-import type { CategoriesConnection } from '../../api/types';
+import {
+	useGetCategoriesQuery,
+	useDeleteCategoryMutation,
+	useCreateCategoryMutation,
+	useUpdateCategoryMutation,
+	GetAllCategoriesDocument,
+} from '../../api/generated/hooks';
 import { useUser } from '../../contexts/UserContext';
 import ConfirmDialog from '../ConfirmDialog';
 import AddCategoryForm from '../AddCategoryForm';
@@ -18,7 +22,7 @@ const Categories = () => {
 	const [isAddFormOpen, setIsAddFormOpen] = useState(false);
 	const [showAllCategories, setShowAllCategories] = useState(false);
 	const { cursor, currentPage, canGoPrevious, reset, handleNextPage, handlePreviousPage } = usePagination();
-	const { loading, error, data, refetch, networkStatus } = useQuery<{ categories: CategoriesConnection }>(GET_CATEGORIES, {
+	const { loading, error, data, refetch, networkStatus } = useGetCategoriesQuery({
 		variables: { createdBy: showAllCategories ? null : username || null, first: PAGE_SIZE, after: cursor },
 		skip: !username,
 		notifyOnNetworkStatusChange: true,
@@ -33,8 +37,8 @@ const Categories = () => {
 	const isRefetching = networkStatus === NetworkStatus.refetch || networkStatus === NetworkStatus.setVariables;
 	const showSkeleton = isInitialLoading || isRefetching;
 
-	const [deleteCategory] = useMutation(DELETE_CATEGORY, {
-		refetchQueries: [{ query: GET_ALL_CATEGORIES }],
+	const [deleteCategory] = useDeleteCategoryMutation({
+		refetchQueries: [GetAllCategoriesDocument],
 		onCompleted: () => {
 			setDeleteCategoryId(null);
 			toast.success('Category deleted successfully');
@@ -45,8 +49,8 @@ const Categories = () => {
 		},
 	});
 
-	const [createCategory] = useMutation(CREATE_CATEGORY, {
-		refetchQueries: [{ query: GET_ALL_CATEGORIES }],
+	const [createCategory] = useCreateCategoryMutation({
+		refetchQueries: [GetAllCategoriesDocument],
 		onCompleted: () => {
 			setIsAddFormOpen(false);
 			toast.success('Category created successfully');
@@ -58,8 +62,8 @@ const Categories = () => {
 		},
 	});
 
-	const [updateCategory] = useMutation(UPDATE_CATEGORY, {
-		refetchQueries: [{ query: GET_ALL_CATEGORIES }],
+	const [updateCategory] = useUpdateCategoryMutation({
+		refetchQueries: [GetAllCategoriesDocument],
 		onCompleted: () => {
 			toast.success('Category updated successfully');
 			refetch();
@@ -125,7 +129,10 @@ const Categories = () => {
 
 	const onNextPage = () => {
 		if (pageInfo) {
-			handleNextPage(pageInfo);
+			handleNextPage({
+				hasNextPage: pageInfo.hasNextPage,
+				endCursor: pageInfo.endCursor ?? null,
+			});
 		}
 	};
 
