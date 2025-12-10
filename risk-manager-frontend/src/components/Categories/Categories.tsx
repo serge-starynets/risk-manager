@@ -24,6 +24,15 @@ const Categories = () => {
 		notifyOnNetworkStatusChange: true,
 	});
 
+	const allCategories = data?.categories?.edges?.map((edge) => edge.node) || [];
+	const totalCount = data?.categories?.pageInfo?.totalCount || 0;
+	const categories = allCategories;
+	const pageInfo = data?.categories?.pageInfo;
+
+	const isInitialLoading = loading && !data;
+	const isRefetching = networkStatus === NetworkStatus.refetch || networkStatus === NetworkStatus.setVariables;
+	const showSkeleton = isInitialLoading || isRefetching;
+
 	const [deleteCategory] = useMutation(DELETE_CATEGORY, {
 		refetchQueries: [{ query: GET_ALL_CATEGORIES }],
 		onCompleted: () => {
@@ -113,15 +122,6 @@ const Categories = () => {
 			</div>
 		);
 	}
-
-	const allCategories = data?.categories?.edges?.map((edge) => edge.node) || [];
-	const totalCount = data?.categories?.pageInfo?.totalCount || 0;
-	const categories = allCategories;
-	const pageInfo = data?.categories?.pageInfo;
-
-	const isInitialLoading = loading && !data;
-	const isRefetching = networkStatus === NetworkStatus.refetch || networkStatus === NetworkStatus.setVariables;
-	const showSkeleton = isInitialLoading || isRefetching;
 
 	const onNextPage = () => {
 		if (pageInfo) {
