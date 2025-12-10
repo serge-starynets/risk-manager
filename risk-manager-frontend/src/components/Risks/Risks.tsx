@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useMemo, useCallback } from 'react';
 import { NetworkStatus } from '@apollo/client';
 import { toast } from 'react-toastify';
 
@@ -7,7 +7,7 @@ import { useUser } from '../../contexts/UserContext';
 import ConfirmDialog from '../ConfirmDialog';
 import AddRiskForm from '../AddRiskForm';
 import { Pagination, usePagination } from '../Pagination';
-import { EditableCell } from '../EditableCell';
+import { RiskRow } from '../RiskRow';
 import { PAGE_SIZE } from '../../constants/constants.ts';
 
 const Risks = () => {
@@ -25,9 +25,9 @@ const Risks = () => {
 
 	const { data: categoriesData } = useGetAllCategoriesQuery();
 
-	const allRisks = data?.risks?.edges?.map((edge) => edge.node) || [];
+	const allRisks = useMemo(() => data?.risks?.edges?.map((edge) => edge.node) || [], [data?.risks?.edges]);
 	const totalCount = data?.risks?.pageInfo?.totalCount || 0;
-	const risks = showOnlyUnresolved ? allRisks.filter((risk) => !risk.resolved) : allRisks;
+	const risks = useMemo(() => (showOnlyUnresolved ? allRisks.filter((risk) => !risk.resolved) : allRisks), [allRisks, showOnlyUnresolved]);
 	const categories = categoriesData?.allCategories || [];
 	const pageInfo = data?.risks?.pageInfo;
 
@@ -68,9 +68,9 @@ const Risks = () => {
 		},
 	});
 
-	const handleDeleteClick = (riskId: string) => {
+	const handleDeleteClick = useCallback((riskId: string) => {
 		setDeleteRiskId(riskId);
-	};
+	}, []);
 
 	const handleConfirmDelete = () => {
 		if (deleteRiskId) {
@@ -96,34 +96,31 @@ const Risks = () => {
 		}
 	};
 
-	const handleStatusToggle = (riskId: string, currentStatus: boolean) => {
-		updateRisk({
-			variables: {
-				id: riskId,
-				resolved: !currentStatus,
-			},
-		});
-	};
+	const handleNameUpdate = useCallback(
+		(riskId: string, newName: string) => {
+			if (newName.trim()) {
+				updateRisk({
+					variables: {
+						id: riskId,
+						name: newName.trim(),
+					},
+				});
+			}
+		},
+		[updateRisk]
+	);
 
-	const handleNameUpdate = (riskId: string, newName: string) => {
-		if (newName.trim()) {
+	const handleDescriptionUpdate = useCallback(
+		(riskId: string, newDescription: string) => {
 			updateRisk({
 				variables: {
 					id: riskId,
-					name: newName.trim(),
+					description: newDescription.trim() || null,
 				},
 			});
-		}
-	};
-
-	const handleDescriptionUpdate = (riskId: string, newDescription: string) => {
-		updateRisk({
-			variables: {
-				id: riskId,
-				description: newDescription.trim() || null,
-			},
-		});
-	};
+		},
+		[updateRisk]
+	);
 
 	if (error) {
 		return (
@@ -247,46 +244,13 @@ const Risks = () => {
 							</tr>
 						) : (
 							risks.map((risk) => (
-								<tr key={risk.id} className="hover:bg-gray-50">
-									<td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
-										<EditableCell
-											value={risk.name}
-											onSave={(newValue) => handleNameUpdate(risk.id, newValue)}
-											className="min-w-[150px]"
-											placeholder="Enter risk name"
-										/>
-									</td>
-									<td className="px-6 py-4 text-sm text-gray-500">
-										<EditableCell
-											value={risk.description || ''}
-											onSave={(newValue) => handleDescriptionUpdate(risk.id, newValue)}
-											className="min-w-[200px]"
-											placeholder="Enter description"
-										/>
-									</td>
-									<td className="px-3 py-4 whitespace-nowrap text-sm text-gray-500 w-32">{risk.category?.name || 'no category'}</td>
-									<td className="px-3 py-4 whitespace-nowrap w-28">
-										<span
-											onClick={() => handleStatusToggle(risk.id, risk.resolved)}
-											className={`px-2 inline-flex text-xs leading-5 font-semibold rounded-full cursor-pointer transition-colors hover:opacity-80 ${
-												risk.resolved ? 'bg-green-100 text-green-800' : 'bg-yellow-100 text-yellow-800'
-											}`}
-										>
-											{risk.resolved ? 'Resolved' : 'Unresolved'}
-										</span>
-									</td>
-									<td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{risk.createdBy}</td>
-									<td className="px-6 py-4 whitespace-nowrap text-sm">
-										<button
-											onClick={() => handleDeleteClick(risk.id)}
-											className="px-3 py-1 text-sm font-medium text-red-600 border border-red-600 
-											rounded-md hover:bg-red-50 focus:outline-none focus:ring-2 focus:ring-red-500 
-											focus:ring-offset-2 transition-colors cursor-pointer"
-										>
-											Delete
-										</button>
-									</td>
-								</tr>
+								<RiskRow
+									key={risk.id}
+									risk={risk}
+									onNameUpdate={handleNameUpdate}
+									onDescriptionUpdate={handleDescriptionUpdate}
+									onDeleteClick={handleDeleteClick}
+								/>
 							))
 						)}
 					</tbody>
