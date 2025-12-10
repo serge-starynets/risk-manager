@@ -140,7 +140,7 @@ describe('Integration tests', () => {
 		expect(riskWithCategory.node.category.name).toBe('Engineering');
 	});
 
-	it('Updates risk name and description', async () => {
+	it('updates risk name and description', async () => {
 		const targetRisk = seeded.risks[0];
 		const updatedName = 'DB outage mitigated';
 		const updatedDescription = 'New backup cluster online';
@@ -187,7 +187,7 @@ describe('Integration tests', () => {
 		expect(updatedRisk.resolved).toBe(true);
 	});
 
-	it('Updates category name and description', async () => {
+	it('updates category name and description', async () => {
 		const targetCategory = seeded.categories[1];
 		const newName = 'Ops';
 		const newDescription = 'Process and vendor related';
@@ -218,7 +218,7 @@ describe('Integration tests', () => {
 		expect(updatedCategory.description).toBe(newDescription);
 	});
 
-	it('Deletes risk', async () => {
+	it('successfully deletes risk', async () => {
 		const targetRisk = seeded.risks[1];
 
 		const deleteRes = await server.executeOperation(
@@ -256,7 +256,43 @@ describe('Integration tests', () => {
 		expect(risks.edges.map((edge) => edge.node.id)).not.toContain(targetRisk._id.toString());
 	});
 
-	it('Deletes category', async () => {
+	it('throws meaningful error if delete risk with nonexistent id', async () => {
+		const targetRisk = seeded.risks[1];
+
+		const deleteRes = await server.executeOperation(
+			{
+				query: `
+					mutation DeleteRisk($id: ID!) {
+						deleteRisk(id: $id)
+					}
+				`,
+				variables: { id: '123' },
+			},
+			{ contextValue: createContext() }
+		);
+		expect(deleteRes.body.singleResult.errors[0].message).toBe('Invalid risk id');
+
+		const queryRes = await server.executeOperation(
+			{
+				query: `
+					query Risks {
+						risks(first: 10) {
+							pageInfo { totalCount }
+							edges { node { id } }
+						}
+					}
+				`,
+			},
+			{ contextValue: createContext() }
+		);
+
+		expect(queryRes.body.kind).toBe('single');
+		const risks = queryRes.body.singleResult.data.risks;
+		expect(risks.pageInfo.totalCount).toBe(3);
+		expect(risks.edges.map((edge) => edge.node.id)).toContain(targetRisk._id.toString());
+	});
+
+	it('successfully deletes category', async () => {
 		const targetCategory = seeded.categories[1];
 
 		const deleteRes = await server.executeOperation(
@@ -293,5 +329,41 @@ describe('Integration tests', () => {
 		expect(categories.pageInfo.totalCount).toBe(1);
 		expect(categories.edges).toHaveLength(1);
 		expect(categories.edges[0].node.name).toBe('Engineering');
+	});
+
+	it('throws meaningful error if delete category with nonexistent id', async () => {
+		const targetCategory = seeded.categories[0];
+
+		const deleteRes = await server.executeOperation(
+			{
+				query: `
+					mutation DeleteCategory($id: ID!) {
+						deleteCategory(id: $id)
+					}
+				`,
+				variables: { id: '123' },
+			},
+			{ contextValue: createContext() }
+		);
+		expect(deleteRes.body.singleResult.errors[0].message).toBe('Invalid category id');
+
+		const queryRes = await server.executeOperation(
+			{
+				query: `
+					query Categories {
+						categories(first: 10) {
+							pageInfo { totalCount }
+							edges { node { id name } }
+						}
+					}
+				`,
+			},
+			{ contextValue: createContext() }
+		);
+
+		expect(queryRes.body.kind).toBe('single');
+		const categories = queryRes.body.singleResult.data.categories;
+		expect(categories.pageInfo.totalCount).toBe(2);
+		expect(categories.edges.map((edge) => edge.node.id)).toContain(targetCategory._id.toString());
 	});
 });

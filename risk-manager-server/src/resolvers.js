@@ -1,9 +1,23 @@
 import mongoose from 'mongoose';
 import { Risk } from './models/risk.js';
 import { Category } from './models/category.js';
+import { GraphQLError } from 'graphql';
 
 const RISKS_LIMIT = 15;
 const CATEGORIES_LIMIT = 15;
+
+const assertValidId = (id, entity) => {
+	if (!mongoose.Types.ObjectId.isValid(id)) {
+		throw new GraphQLError(`Invalid ${entity} id`, { extensions: { code: 'BAD_USER_INPUT' } });
+	}
+};
+
+const requireName = (name, entity) => {
+	if (!name || !name.trim()) {
+		throw new GraphQLError(`${entity} name cannot be empty`, { extensions: { code: 'BAD_USER_INPUT' } });
+	}
+	return name.trim();
+};
 
 export const resolvers = {
 	Query: {
@@ -149,30 +163,68 @@ export const resolvers = {
 
 	Mutation: {
 		createRisk: async (_, { name, description, categoryId, createdBy, resolved }) => {
-			const risk = new Risk({ name, description, categoryId, createdBy, resolved: resolved ?? false });
+			const trimmedName = requireName(name, 'Risk');
+			const risk = new Risk({ name: trimmedName, description, categoryId, createdBy, resolved: resolved ?? false });
 			await risk.save();
 			return risk;
 		},
 		deleteRisk: async (_, { id }) => {
+			assertValidId(id, 'risk');
+			const risk = await Risk.findById(id);
+			if (!risk) {
+				throw new GraphQLError('Risk not found for given id', {
+					extensions: { code: 'BAD_USER_INPUT' },
+				});
+			}
 			await Risk.findByIdAndDelete(id);
 			return true;
+
+			// return false;
 		},
 		updateRisk: async (_, { id, name, description, categoryId, resolved }) => {
-			await Risk.findByIdAndUpdate(id, { name, description, categoryId, resolved });
-			return await Risk.findById(id);
+			assertValidId(id, 'risk');
+			const update = { description, categoryId, resolved };
+			if (name !== undefined) {
+				update.name = requireName(name, 'Risk');
+			}
+			const updatedRisk = await Risk.findByIdAndUpdate(id, update, { new: true });
+			if (!updatedRisk) {
+				throw new GraphQLError('Risk not found for given id', {
+					extensions: { code: 'BAD_USER_INPUT' },
+				});
+			}
+			return updatedRisk;
 		},
 		createCategory: async (_, { name, description, createdBy }) => {
-			const category = new Category({ name, description, createdBy });
+			const trimmedName = requireName(name, 'Category');
+			const category = new Category({ name: trimmedName, description, createdBy });
 			await category.save();
 			return category;
 		},
 		deleteCategory: async (_, { id }) => {
+			assertValidId(id, 'category');
+			const category = await Category.findById(id);
+			if (!category) {
+				throw new GraphQLError('Category not found for given id', {
+					extensions: { code: 'BAD_USER_INPUT' },
+				});
+			}
 			await Category.findByIdAndDelete(id);
 			return true;
 		},
 		updateCategory: async (_, { id, name, description }) => {
-			await Category.findByIdAndUpdate(id, { name, description });
-			return await Category.findById(id);
+			assertValidId(id, 'category');
+			const update = { description };
+			if (name !== undefined) {
+				update.name = requireName(name, 'Category');
+			}
+			const updatedCategory = await Category.findByIdAndUpdate(id, update, { new: true });
+			if (!updatedCategory) {
+				throw new GraphQLError('Category not found for given id', {
+					extensions: { code: 'BAD_USER_INPUT' },
+				});
+			}
+			return updatedCategory;
 		},
 	},
 

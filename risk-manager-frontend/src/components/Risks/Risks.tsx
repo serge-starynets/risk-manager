@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { NetworkStatus } from '@apollo/client';
 import { toast } from 'react-toastify';
 import { useQuery, useMutation } from '@apollo/client/react';
 
@@ -19,9 +20,10 @@ const Risks = () => {
 	const [showOnlyUnresolved, setShowOnlyUnresolved] = useState(false);
 	const [showAllRisks, setShowAllRisks] = useState(false);
 	const { cursor, currentPage, canGoPrevious, reset, handleNextPage, handlePreviousPage } = usePagination();
-	const { loading, error, data, refetch } = useQuery<{ risks: RisksConnection }>(GET_RISKS, {
+	const { loading, error, data, refetch, networkStatus } = useQuery<{ risks: RisksConnection }>(GET_RISKS, {
 		variables: { createdBy: showAllRisks ? null : username || null, first: PAGE_SIZE, after: cursor },
 		skip: !username,
+		notifyOnNetworkStatusChange: true,
 	});
 
 	const { data: categoriesData } = useQuery<{ allCategories: Category[] }>(GET_ALL_CATEGORIES);
@@ -31,6 +33,10 @@ const Risks = () => {
 	const risks = showOnlyUnresolved ? allRisks.filter((risk) => !risk.resolved) : allRisks;
 	const categories = categoriesData?.allCategories || [];
 	const pageInfo = data?.risks?.pageInfo;
+
+	const isInitialLoading = loading && !data;
+	const isRefetching = networkStatus === NetworkStatus.refetch || networkStatus === NetworkStatus.setVariables;
+	const showSkeleton = isInitialLoading || isRefetching;
 
 	const [deleteRisk] = useMutation(DELETE_RISK, {
 		onCompleted: () => {
@@ -122,14 +128,6 @@ const Risks = () => {
 		});
 	};
 
-	if (loading) {
-		return (
-			<div className="text-center py-8">
-				<p className="text-gray-500">Loading risks...</p>
-			</div>
-		);
-	}
-
 	if (error) {
 		return (
 			<div className="text-center py-8">
@@ -147,6 +145,30 @@ const Risks = () => {
 	const onPreviousPage = () => {
 		handlePreviousPage();
 	};
+
+	const renderSkeletonRows = () =>
+		Array.from({ length: PAGE_SIZE }).map((_, index) => (
+			<tr key={`skeleton-${index}`} className="animate-pulse">
+				<td className="px-6 py-4 whitespace-nowrap">
+					<div className="h-4 bg-gray-200 rounded w-32" />
+				</td>
+				<td className="px-6 py-4 whitespace-nowrap">
+					<div className="h-4 bg-gray-200 rounded w-64" />
+				</td>
+				<td className="px-3 py-4 whitespace-nowrap">
+					<div className="h-4 bg-gray-200 rounded w-24" />
+				</td>
+				<td className="px-3 py-4 whitespace-nowrap">
+					<div className="h-4 bg-gray-200 rounded w-20" />
+				</td>
+				<td className="px-6 py-4 whitespace-nowrap">
+					<div className="h-4 bg-gray-200 rounded w-28" />
+				</td>
+				<td className="px-6 py-4 whitespace-nowrap">
+					<div className="h-8 bg-gray-200 rounded w-16" />
+				</td>
+			</tr>
+		));
 
 	return (
 		<>
@@ -215,7 +237,9 @@ const Risks = () => {
 						</tr>
 					</thead>
 					<tbody className="bg-white divide-y divide-gray-200">
-						{risks.length === 0 ? (
+						{showSkeleton ? (
+							renderSkeletonRows()
+						) : risks.length === 0 ? (
 							<tr>
 								<td colSpan={6} className="px-6 py-4 text-center text-gray-500">
 									No risks available
