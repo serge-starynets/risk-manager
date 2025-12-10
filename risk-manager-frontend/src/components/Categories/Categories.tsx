@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { NetworkStatus } from '@apollo/client';
 import { useQuery, useMutation } from '@apollo/client/react';
 import { toast } from 'react-toastify';
 
@@ -9,7 +10,7 @@ import ConfirmDialog from '../ConfirmDialog';
 import AddCategoryForm from '../AddCategoryForm';
 import { Pagination, usePagination } from '../Pagination';
 import { EditableCell } from '../EditableCell';
-import { PAGE_SIZE } from '../../constants/constants.ts'
+import { PAGE_SIZE } from '../../constants/constants.ts';
 
 const Categories = () => {
 	const { username } = useUser();
@@ -17,9 +18,10 @@ const Categories = () => {
 	const [isAddFormOpen, setIsAddFormOpen] = useState(false);
 	const [showAllCategories, setShowAllCategories] = useState(false);
 	const { cursor, currentPage, canGoPrevious, reset, handleNextPage, handlePreviousPage } = usePagination();
-	const { loading, error, data, refetch } = useQuery<{ categories: CategoriesConnection }>(GET_CATEGORIES, {
+	const { loading, error, data, refetch, networkStatus } = useQuery<{ categories: CategoriesConnection }>(GET_CATEGORIES, {
 		variables: { createdBy: showAllCategories ? null : username || null, first: PAGE_SIZE, after: cursor },
 		skip: !username,
+		notifyOnNetworkStatusChange: true,
 	});
 
 	const [deleteCategory] = useMutation(DELETE_CATEGORY, {
@@ -104,14 +106,6 @@ const Categories = () => {
 		});
 	};
 
-	if (loading) {
-		return (
-			<div className="text-center py-8">
-				<p className="text-gray-500">Loading categories...</p>
-			</div>
-		);
-	}
-
 	if (error) {
 		return (
 			<div className="text-center py-8">
@@ -125,6 +119,10 @@ const Categories = () => {
 	const categories = allCategories;
 	const pageInfo = data?.categories?.pageInfo;
 
+	const isInitialLoading = loading && !data;
+	const isRefetching = networkStatus === NetworkStatus.refetch || networkStatus === NetworkStatus.setVariables;
+	const showSkeleton = isInitialLoading || isRefetching;
+
 	const onNextPage = () => {
 		if (pageInfo) {
 			handleNextPage(pageInfo);
@@ -134,6 +132,24 @@ const Categories = () => {
 	const onPreviousPage = () => {
 		handlePreviousPage();
 	};
+
+	const renderSkeletonRows = () =>
+		Array.from({ length: PAGE_SIZE }).map((_, index) => (
+			<tr key={`skeleton-${index}`} className="animate-pulse">
+				<td className="px-6 py-4 whitespace-nowrap">
+					<div className="h-4 bg-gray-200 rounded w-32" />
+				</td>
+				<td className="px-6 py-4 whitespace-nowrap">
+					<div className="h-4 bg-gray-200 rounded w-64" />
+				</td>
+				<td className="px-6 py-4 whitespace-nowrap">
+					<div className="h-4 bg-gray-200 rounded w-28" />
+				</td>
+				<td className="px-6 py-4 whitespace-nowrap">
+					<div className="h-8 bg-gray-200 rounded w-16" />
+				</td>
+			</tr>
+		));
 
 	return (
 		<>
@@ -176,7 +192,9 @@ const Categories = () => {
 						</tr>
 					</thead>
 					<tbody className="bg-white divide-y divide-gray-200">
-						{categories.length === 0 ? (
+						{showSkeleton ? (
+							renderSkeletonRows()
+						) : categories.length === 0 ? (
 							<tr>
 								<td colSpan={4} className="px-6 py-4 text-center text-gray-500">
 									No categories available

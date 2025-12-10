@@ -13,8 +13,17 @@ export interface ICategoryDocument extends ICategory, mongoose.Document {
 }
 
 const categorySchema = new Schema<ICategoryDocument>({
-	name: { type: String, required: true },
-	description: { type: String, required: false },
+	name: {
+		type: String,
+		required: [true, 'Name is required'],
+		minlength: [3, 'Name must be at least 2 characters'],
+		maxlength: [100, 'Name cannot exceed 100 characters']
+	},
+	description: {
+		type: String,
+		required: false,
+		maxlength: [500, 'Description too long']
+	},
 	createdBy: { type: String, required: true },
 	createdAt: { type: Date, default: Date.now },
 	updatedAt: { type: Date, default: Date.now },

@@ -15,8 +15,17 @@ export interface IRiskDocument extends IRisk, mongoose.Document {
 }
 
 const riskSchema = new Schema<IRiskDocument>({
-	name: { type: String, required: true },
-	description: { type: String, required: false },
+	name: {
+		type: String,
+		required: [true, 'Name is required'],
+		minlength: [3, 'Name must be at least 2 characters'],
+		maxlength: [100, 'Name cannot exceed 100 characters']
+	},
+	description: {
+		type: String,
+		required: false,
+		maxlength: [500, 'Description too long']
+	},
 	categoryId: { type: Schema.Types.ObjectId, ref: 'Category', required: true },
 	resolved: { type: Boolean, default: false },
 	createdBy: { type: String, required: true },

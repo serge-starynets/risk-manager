@@ -1,7 +1,7 @@
 import mongoose from 'mongoose';
 import { GraphQLError } from 'graphql';
-import { Risk, IRiskDocument } from './models/risk.js';
-import { Category, ICategoryDocument } from './models/category.js';
+import { Risk, IRiskDocument } from './models/risk';
+import { Category, ICategoryDocument } from './models/category';
 import type DataLoader from 'dataloader';
 
 const RISKS_LIMIT = 15;
@@ -52,29 +52,101 @@ const requireName = (name: string | undefined, entity: string): string => {
 	return name.trim();
 };
 
+interface PaginationParams {
+	createdBy?: string | null;
+	first?: number;
+	after?: string | null;
+}
+
+interface PaginationQuery {
+	query: Record<string, unknown>;
+	limit: number;
+}
+
+const buildPaginationQuery = (params: PaginationParams, defaultLimit: number): PaginationQuery => {
+	const limit = Math.min(params.first || defaultLimit, defaultLimit);
+	const query: Record<string, unknown> = params.createdBy ? { createdBy: params.createdBy } : {};
+
+	// If cursor is provided, find records after that cursor
+	if (params.after) {
+		try {
+			if (mongoose.Types.ObjectId.isValid(params.after)) {
+				query._id = { $lt: new mongoose.Types.ObjectId(params.after) };
+			}
+		} catch (e) {
+			// Invalid cursor, ignore it
+		}
+	}
+
+	return { query, limit };
+};
+
+const buildEdges = <T extends { _id: mongoose.Types.ObjectId }>(documents: T[]): Array<{ node: T; cursor: string }> => {
+	return documents.map((doc) => ({
+		node: doc,
+		cursor: doc._id.toString(),
+	}));
+};
+
+const calculateHasPreviousPage = async <T extends { _id: mongoose.Types.ObjectId; createdAt: Date }>(
+	Model: mongoose.Model<T>,
+	edges: T[],
+	after: string | null | undefined,
+	createdBy?: string | null
+): Promise<boolean> => {
+	if (after) {
+		// If we have a cursor, there's a previous page
+		return true;
+	}
+
+	if (edges.length === 0) {
+		return false;
+	}
+
+	// Check if there are records before the start cursor
+	const previousQuery: Record<string, unknown> = {
+		$or: [
+			{ createdAt: { $gt: edges[0].createdAt } },
+			{
+				createdAt: edges[0].createdAt,
+				_id: { $gt: edges[0]._id },
+			},
+		],
+	};
+
+	if (createdBy) {
+		previousQuery.createdBy = createdBy;
+	}
+
+	const previousCount = await Model.countDocuments(previousQuery);
+	return previousCount > 0;
+};
+
+const buildPageInfo = async <T extends { _id: mongoose.Types.ObjectId; createdAt: Date }>(
+	Model: mongoose.Model<T>,
+	edges: T[],
+	hasNextPage: boolean,
+	after: string | null | undefined,
+	createdBy?: string | null
+): Promise<PageInfo> => {
+	const startCursor = edges.length > 0 ? edges[0]._id.toString() : null;
+	const endCursor = edges.length > 0 ? edges[edges.length - 1]._id.toString() : null;
+	const totalCount = await Model.countDocuments(createdBy ? { createdBy } : {});
+	const hasPreviousPage = await calculateHasPreviousPage(Model, edges, after, createdBy);
+
+	return {
+		hasNextPage,
+		hasPreviousPage,
+		startCursor,
+		endCursor,
+		totalCount,
+	};
+};
+
 export const resolvers = {
 	Query: {
-		risks: async (
-			_: unknown,
-			{ createdBy, first = RISKS_LIMIT, after }: { createdBy?: string | null; first?: number; after?: string | null },
-			__: GraphQLContext
-		): Promise<RisksConnection> => {
-			const limit = Math.min(first || RISKS_LIMIT, RISKS_LIMIT);
-			const query: Record<string, unknown> = createdBy ? { createdBy } : {};
-
-			// If cursor is provided, find risks after that cursor
-			// Using _id for cursor since we sort by createdAt descending, we use _id as tiebreaker
-			if (after) {
-				try {
-					if (mongoose.Types.ObjectId.isValid(after)) {
-						query._id = { $lt: new mongoose.Types.ObjectId(after) };
-					}
-				} catch (e) {
-					// Invalid cursor, ignore it
-				}
-			}
-
-			const totalCount = await Risk.countDocuments(createdBy ? { createdBy } : {});
+		risks: async (_: unknown, { createdBy, first = RISKS_LIMIT, after }: PaginationParams): Promise<RisksConnection> => {
+			const { query, limit } = buildPaginationQuery({ createdBy, first, after }, RISKS_LIMIT);
 
 			// Sort by createdAt descending, then by _id descending for consistent pagination
 			// Fetch one extra to check if there's a next page
@@ -85,70 +157,18 @@ export const resolvers = {
 			const hasNextPage = risks.length > limit;
 			const edges = hasNextPage ? risks.slice(0, limit) : risks;
 
-			// Get the first and last cursors (using _id)
-			const startCursor = edges.length > 0 ? edges[0]._id.toString() : null;
-			const endCursor = edges.length > 0 ? edges[edges.length - 1]._id.toString() : null;
-
-			// Check if there's a previous page
-			let hasPreviousPage = false;
-			if (after) {
-				// If we have a cursor, there's a previous page
-				hasPreviousPage = true;
-			} else if (startCursor) {
-				// Check if there are records before the start cursor
-				const previousQuery: Record<string, unknown> = {
-					$or: [
-						{ createdAt: { $gt: edges[0].createdAt } },
-						{
-							createdAt: edges[0].createdAt,
-							_id: { $gt: edges[0]._id },
-						},
-					],
-				};
-				if (createdBy) {
-					previousQuery.createdBy = createdBy;
-				}
-				const previousCount = await Risk.countDocuments(previousQuery);
-				hasPreviousPage = previousCount > 0;
-			}
+			const pageInfo = await buildPageInfo(Risk, edges, hasNextPage, after, createdBy);
 
 			return {
-				edges: edges.map((risk) => ({
-					node: risk,
-					cursor: risk._id.toString(),
-				})),
-				pageInfo: {
-					hasNextPage,
-					hasPreviousPage,
-					startCursor,
-					endCursor,
-					totalCount,
-				},
+				edges: buildEdges(edges),
+				pageInfo,
 			};
 		},
-		risk: async (_: unknown, { id }: { id: string }, __: GraphQLContext): Promise<IRiskDocument | null> => {
+		risk: async (_: unknown, { id }: { id: string }): Promise<IRiskDocument | null> => {
 			return await Risk.findById(id);
 		},
-		categories: async (
-			_: unknown,
-			{ createdBy, first = CATEGORIES_LIMIT, after }: { createdBy?: string | null; first?: number; after?: string | null },
-			__: GraphQLContext
-		): Promise<CategoriesConnection> => {
-			const limit = Math.min(first || CATEGORIES_LIMIT, CATEGORIES_LIMIT);
-			const query: Record<string, unknown> = createdBy ? { createdBy } : {};
-
-			// If cursor is provided, find categories after that cursor
-			if (after) {
-				try {
-					if (mongoose.Types.ObjectId.isValid(after)) {
-						query._id = { $lt: new mongoose.Types.ObjectId(after) };
-					}
-				} catch (e) {
-					// Invalid cursor, ignore it
-				}
-			}
-
-			const totalCount = await Category.countDocuments(createdBy ? { createdBy } : {});
+		categories: async (_: unknown, { createdBy, first = CATEGORIES_LIMIT, after }: PaginationParams): Promise<CategoriesConnection> => {
+			const { query, limit } = buildPaginationQuery({ createdBy, first, after }, CATEGORIES_LIMIT);
 
 			// Sort by createdAt descending, then by _id descending for consistent pagination
 			// Fetch one extra to check if there's a next page
@@ -159,45 +179,11 @@ export const resolvers = {
 			const hasNextPage = categories.length > limit;
 			const edges = hasNextPage ? categories.slice(0, limit) : categories;
 
-			// Get the first and last cursors (using _id)
-			const startCursor = edges.length > 0 ? edges[0]._id.toString() : null;
-			const endCursor = edges.length > 0 ? edges[edges.length - 1]._id.toString() : null;
-
-			// Check if there's a previous page
-			let hasPreviousPage = false;
-			if (after) {
-				// If we have a cursor, there's a previous page
-				hasPreviousPage = true;
-			} else if (startCursor) {
-				// Check if there are records before the start cursor
-				const previousQuery: Record<string, unknown> = {
-					$or: [
-						{ createdAt: { $gt: edges[0].createdAt } },
-						{
-							createdAt: edges[0].createdAt,
-							_id: { $gt: edges[0]._id },
-						},
-					],
-				};
-				if (createdBy) {
-					previousQuery.createdBy = createdBy;
-				}
-				const previousCount = await Category.countDocuments(previousQuery);
-				hasPreviousPage = previousCount > 0;
-			}
+			const pageInfo = await buildPageInfo(Category, edges, hasNextPage, after, createdBy);
 
 			return {
-				edges: edges.map((category) => ({
-					node: category,
-					cursor: category._id.toString(),
-				})),
-				pageInfo: {
-					hasNextPage,
-					hasPreviousPage,
-					startCursor,
-					endCursor,
-					totalCount,
-				},
+				edges: buildEdges(edges),
+				pageInfo,
 			};
 		},
 		allCategories: async (_: unknown, __: unknown, ___: GraphQLContext): Promise<ICategoryDocument[]> => {
@@ -217,15 +203,20 @@ export const resolvers = {
 				categoryId,
 				createdBy,
 				resolved,
-			}: { name: string; description?: string | null; categoryId: string; createdBy: string; resolved?: boolean | null },
-			__: GraphQLContext
+			}: {
+				name: string;
+				description?: string | null;
+				categoryId: string;
+				createdBy: string;
+				resolved?: boolean | null;
+			}
 		): Promise<IRiskDocument> => {
 			const trimmedName = requireName(name, 'Risk');
 			const risk = new Risk({ name: trimmedName, description: description || undefined, categoryId, createdBy, resolved: resolved ?? false });
 			await risk.save();
 			return risk;
 		},
-		deleteRisk: async (_: unknown, { id }: { id: string }, __: GraphQLContext): Promise<boolean> => {
+		deleteRisk: async (_: unknown, { id }: { id: string }): Promise<boolean> => {
 			assertValidId(id, 'risk');
 			const risk = await Risk.findById(id);
 			if (!risk) {
@@ -244,8 +235,13 @@ export const resolvers = {
 				description,
 				categoryId,
 				resolved,
-			}: { id: string; name?: string | null; description?: string | null; categoryId?: string | null; resolved?: boolean | null },
-			__: GraphQLContext
+			}: {
+				id: string;
+				name?: string | null;
+				description?: string | null;
+				categoryId?: string | null;
+				resolved?: boolean | null;
+			}
 		): Promise<IRiskDocument> => {
 			assertValidId(id, 'risk');
 			const update: Record<string, unknown> = {};
@@ -271,8 +267,15 @@ export const resolvers = {
 		},
 		createCategory: async (
 			_: unknown,
-			{ name, description, createdBy }: { name: string; description?: string | null; createdBy: string },
-			__: GraphQLContext
+			{
+				name,
+				description,
+				createdBy,
+			}: {
+				name: string;
+				description?: string | null;
+				createdBy: string;
+			}
 		): Promise<ICategoryDocument> => {
 			const trimmedName = requireName(name, 'Category');
 			const category = new Category({ name: trimmedName, description: description || undefined, createdBy });
@@ -292,8 +295,7 @@ export const resolvers = {
 		},
 		updateCategory: async (
 			_: unknown,
-			{ id, name, description }: { id: string; name?: string | null; description?: string | null },
-			__: GraphQLContext
+			{ id, name, description }: { id: string; name?: string | null; description?: string | null }
 		): Promise<ICategoryDocument> => {
 			assertValidId(id, 'category');
 			const update: Record<string, unknown> = {};
