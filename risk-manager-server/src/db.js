@@ -11,6 +11,7 @@ export async function connectDB() {
 
 	try {
 		await mongoose.connect(uri);
+		console.log('Connected to MongoDB');
 
 		// Set up connection event handlers for better debugging
 		mongoose.connection.on('connected', () => {

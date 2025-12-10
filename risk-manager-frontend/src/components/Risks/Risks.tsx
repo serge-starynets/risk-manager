@@ -10,7 +10,7 @@ import ConfirmDialog from '../ConfirmDialog';
 import AddRiskForm from '../AddRiskForm';
 import { Pagination, usePagination } from '../Pagination';
 import { EditableCell } from '../EditableCell';
-import { PAGE_SIZE } from '../../constants/constants.ts'
+import { PAGE_SIZE } from '../../constants/constants.ts';
 
 const Risks = () => {
 	const { username } = useUser();
