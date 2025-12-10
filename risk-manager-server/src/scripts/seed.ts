@@ -1,4 +1,5 @@
 import 'dotenv/config';
+import mongoose from 'mongoose';
 import { Risk } from '../models/risk.js';
 import { Category } from '../models/category.js';
 import connectDB from '../db.js';
@@ -1669,7 +1670,7 @@ const risksData = [
 	},
 ];
 
-async function seedDatabase() {
+async function seedDatabase(): Promise<void> {
 	try {
 		// Connect to database
 		await connectDB();
@@ -1686,7 +1687,7 @@ async function seedDatabase() {
 		console.log(`Created ${createdCategories.length} categories.`);
 
 		// Create a map of category names to IDs
-		const categoryMap = {};
+		const categoryMap: Record<string, mongoose.Types.ObjectId> = {};
 		createdCategories.forEach((cat) => {
 			categoryMap[cat.name] = cat._id;
 		});
@@ -1709,7 +1710,7 @@ async function seedDatabase() {
 		console.log(`Categories created: ${createdCategories.length}`);
 		console.log(`Risks created: ${createdRisks.length}`);
 		console.log(`\nRisks by category:`);
-		const risksByCategory = createdRisks.reduce((acc, risk) => {
+		const risksByCategory = createdRisks.reduce((acc: Record<string, number>, risk) => {
 			const key = risk.categoryId.toString();
 			acc[key] = (acc[key] || 0) + 1;
 			return acc;
@@ -1727,7 +1728,8 @@ async function seedDatabase() {
 		console.log('\n✅ Database seeded successfully!');
 		process.exit(0);
 	} catch (error) {
-		console.error('❌ Error seeding database:', error);
+		const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+		console.error('❌ Error seeding database:', errorMessage);
 		process.exit(1);
 	}
 }

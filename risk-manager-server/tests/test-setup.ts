@@ -3,25 +3,26 @@ import { ApolloServer } from '@apollo/server';
 import { MongoMemoryServer } from 'mongodb-memory-server';
 import mongoose from 'mongoose';
 
-import { typeDefs } from '../src/schema';
-import { resolvers } from '../src/resolvers';
+import { typeDefs } from '../src/schema.js';
+import { resolvers } from '../src/resolvers.js';
 import { createCategoryLoader } from '../src/dataLoader.js';
-import { Category } from '../src/models/category.js';
-import { Risk } from '../src/models/risk.js';
+import { Category, ICategoryDocument } from '../src/models/category.js';
+import { Risk, IRiskDocument } from '../src/models/risk.js';
+import type { GraphQLContext } from '../src/resolvers.js';
 
-let mongod;
-let server;
+let mongod: MongoMemoryServer | undefined;
+let server: ApolloServer<GraphQLContext> | undefined;
 
 export async function setupTestServer() {
 	mongod = await MongoMemoryServer.create();
 	const uri = mongod.getUri();
 	await mongoose.connect(uri);
 
-	const createContext = () => ({
+	const createContext = (): GraphQLContext => ({
 		categoryLoader: createCategoryLoader(),
 	});
 
-	server = new ApolloServer({
+	server = new ApolloServer<GraphQLContext>({
 		typeDefs,
 		resolvers,
 	});
@@ -35,14 +36,16 @@ export async function setupTestServer() {
 	};
 }
 
-export async function teardownTestServer() {
-	await mongoose.connection.db.dropDatabase();
+export async function teardownTestServer(): Promise<void> {
+	if (mongoose.connection.db) {
+		await mongoose.connection.db.dropDatabase();
+	}
 	await mongoose.disconnect();
 	if (mongod) await mongod.stop();
 	if (server) await server.stop();
 }
 
-export async function resetTestDB() {
+export async function resetTestDB(): Promise<void> {
 	const { collections } = mongoose.connection;
 	// Drop all collections to ensure a clean slate between tests
 	for (const name of Object.keys(collections)) {
@@ -50,7 +53,7 @@ export async function resetTestDB() {
 	}
 }
 
-export async function seedTestData() {
+export async function seedTestData(): Promise<{ categories: ICategoryDocument[]; risks: IRiskDocument[] }> {
 	const [engineering, operations] = await Category.insertMany([
 		{ name: 'Engineering', description: 'Tech risks', createdBy: 'tester' },
 		{ name: 'Operations', description: 'Process risks', createdBy: 'tester' },

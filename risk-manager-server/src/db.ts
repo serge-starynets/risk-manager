@@ -1,6 +1,6 @@
 import mongoose from 'mongoose';
 
-export async function connectDB() {
+export async function connectDB(): Promise<void> {
 	const uri = process.env.MONGODB_URI;
 
 	if (!uri) {
@@ -34,8 +34,8 @@ export async function connectDB() {
 			process.exit(0);
 		});
 	} catch (error) {
-		console.error('Error connecting to MongoDB:', error.message);
-
+		const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+		console.error('Error connecting to MongoDB:', errorMessage);
 		process.exit(1);
 	}
 }

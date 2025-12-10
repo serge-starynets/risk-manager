@@ -1,18 +1,51 @@
 import mongoose from 'mongoose';
-import { Risk } from './models/risk.js';
-import { Category } from './models/category.js';
 import { GraphQLError } from 'graphql';
+import { Risk, IRiskDocument } from './models/risk.js';
+import { Category, ICategoryDocument } from './models/category.js';
+import type DataLoader from 'dataloader';
 
 const RISKS_LIMIT = 15;
 const CATEGORIES_LIMIT = 15;
 
-const assertValidId = (id, entity) => {
+export interface GraphQLContext {
+	categoryLoader: DataLoader<string | mongoose.Types.ObjectId, ICategoryDocument | null>;
+}
+
+interface PageInfo {
+	hasNextPage: boolean;
+	hasPreviousPage: boolean;
+	startCursor: string | null;
+	endCursor: string | null;
+	totalCount: number;
+}
+
+interface RiskEdge {
+	node: IRiskDocument;
+	cursor: string;
+}
+
+interface RisksConnection {
+	edges: RiskEdge[];
+	pageInfo: PageInfo;
+}
+
+interface CategoryEdge {
+	node: ICategoryDocument;
+	cursor: string;
+}
+
+interface CategoriesConnection {
+	edges: CategoryEdge[];
+	pageInfo: PageInfo;
+}
+
+const assertValidId = (id: string, entity: string): void => {
 	if (!mongoose.Types.ObjectId.isValid(id)) {
 		throw new GraphQLError(`Invalid ${entity} id`, { extensions: { code: 'BAD_USER_INPUT' } });
 	}
 };
 
-const requireName = (name, entity) => {
+const requireName = (name: string | undefined, entity: string): string => {
 	if (!name || !name.trim()) {
 		throw new GraphQLError(`${entity} name cannot be empty`, { extensions: { code: 'BAD_USER_INPUT' } });
 	}
@@ -21,9 +54,13 @@ const requireName = (name, entity) => {
 
 export const resolvers = {
 	Query: {
-		risks: async (_, { createdBy, first = RISKS_LIMIT, after }) => {
+		risks: async (
+			_: unknown,
+			{ createdBy, first = RISKS_LIMIT, after }: { createdBy?: string | null; first?: number; after?: string | null },
+			__: GraphQLContext
+		): Promise<RisksConnection> => {
 			const limit = Math.min(first || RISKS_LIMIT, RISKS_LIMIT);
-			const query = createdBy ? { createdBy } : {};
+			const query: Record<string, unknown> = createdBy ? { createdBy } : {};
 
 			// If cursor is provided, find risks after that cursor
 			// Using _id for cursor since we sort by createdAt descending, we use _id as tiebreaker
@@ -59,7 +96,7 @@ export const resolvers = {
 				hasPreviousPage = true;
 			} else if (startCursor) {
 				// Check if there are records before the start cursor
-				const previousQuery = {
+				const previousQuery: Record<string, unknown> = {
 					$or: [
 						{ createdAt: { $gt: edges[0].createdAt } },
 						{
@@ -89,10 +126,16 @@ export const resolvers = {
 				},
 			};
 		},
-		risk: async (_, { id }) => await Risk.findById(id),
-		categories: async (_, { createdBy, first = CATEGORIES_LIMIT, after }) => {
+		risk: async (_: unknown, { id }: { id: string }, __: GraphQLContext): Promise<IRiskDocument | null> => {
+			return await Risk.findById(id);
+		},
+		categories: async (
+			_: unknown,
+			{ createdBy, first = CATEGORIES_LIMIT, after }: { createdBy?: string | null; first?: number; after?: string | null },
+			__: GraphQLContext
+		): Promise<CategoriesConnection> => {
 			const limit = Math.min(first || CATEGORIES_LIMIT, CATEGORIES_LIMIT);
-			const query = createdBy ? { createdBy } : {};
+			const query: Record<string, unknown> = createdBy ? { createdBy } : {};
 
 			// If cursor is provided, find categories after that cursor
 			if (after) {
@@ -127,7 +170,7 @@ export const resolvers = {
 				hasPreviousPage = true;
 			} else if (startCursor) {
 				// Check if there are records before the start cursor
-				const previousQuery = {
+				const previousQuery: Record<string, unknown> = {
 					$or: [
 						{ createdAt: { $gt: edges[0].createdAt } },
 						{
@@ -157,18 +200,32 @@ export const resolvers = {
 				},
 			};
 		},
-		allCategories: async () => await Category.find().sort({ createdAt: -1 }),
-		category: async (_, { id }) => await Category.findById(id),
+		allCategories: async (_: unknown, __: unknown, ___: GraphQLContext): Promise<ICategoryDocument[]> => {
+			return await Category.find().sort({ createdAt: -1 });
+		},
+		category: async (_: unknown, { id }: { id: string }, __: GraphQLContext): Promise<ICategoryDocument | null> => {
+			return await Category.findById(id);
+		},
 	},
 
 	Mutation: {
-		createRisk: async (_, { name, description, categoryId, createdBy, resolved }) => {
+		createRisk: async (
+			_: unknown,
+			{
+				name,
+				description,
+				categoryId,
+				createdBy,
+				resolved,
+			}: { name: string; description?: string | null; categoryId: string; createdBy: string; resolved?: boolean | null },
+			__: GraphQLContext
+		): Promise<IRiskDocument> => {
 			const trimmedName = requireName(name, 'Risk');
-			const risk = new Risk({ name: trimmedName, description, categoryId, createdBy, resolved: resolved ?? false });
+			const risk = new Risk({ name: trimmedName, description: description || undefined, categoryId, createdBy, resolved: resolved ?? false });
 			await risk.save();
 			return risk;
 		},
-		deleteRisk: async (_, { id }) => {
+		deleteRisk: async (_: unknown, { id }: { id: string }, __: GraphQLContext): Promise<boolean> => {
 			assertValidId(id, 'risk');
 			const risk = await Risk.findById(id);
 			if (!risk) {
@@ -178,13 +235,30 @@ export const resolvers = {
 			}
 			await Risk.findByIdAndDelete(id);
 			return true;
-
-			// return false;
 		},
-		updateRisk: async (_, { id, name, description, categoryId, resolved }) => {
+		updateRisk: async (
+			_: unknown,
+			{
+				id,
+				name,
+				description,
+				categoryId,
+				resolved,
+			}: { id: string; name?: string | null; description?: string | null; categoryId?: string | null; resolved?: boolean | null },
+			__: GraphQLContext
+		): Promise<IRiskDocument> => {
 			assertValidId(id, 'risk');
-			const update = { description, categoryId, resolved };
-			if (name !== undefined) {
+			const update: Record<string, unknown> = {};
+			if (description !== undefined) {
+				update.description = description || undefined;
+			}
+			if (categoryId !== undefined) {
+				update.categoryId = categoryId || undefined;
+			}
+			if (resolved !== undefined) {
+				update.resolved = resolved ?? false;
+			}
+			if (name !== undefined && name !== null) {
 				update.name = requireName(name, 'Risk');
 			}
 			const updatedRisk = await Risk.findByIdAndUpdate(id, update, { new: true });
@@ -195,13 +269,17 @@ export const resolvers = {
 			}
 			return updatedRisk;
 		},
-		createCategory: async (_, { name, description, createdBy }) => {
+		createCategory: async (
+			_: unknown,
+			{ name, description, createdBy }: { name: string; description?: string | null; createdBy: string },
+			__: GraphQLContext
+		): Promise<ICategoryDocument> => {
 			const trimmedName = requireName(name, 'Category');
-			const category = new Category({ name: trimmedName, description, createdBy });
+			const category = new Category({ name: trimmedName, description: description || undefined, createdBy });
 			await category.save();
 			return category;
 		},
-		deleteCategory: async (_, { id }) => {
+		deleteCategory: async (_: unknown, { id }: { id: string }, __: GraphQLContext): Promise<boolean> => {
 			assertValidId(id, 'category');
 			const category = await Category.findById(id);
 			if (!category) {
@@ -212,10 +290,17 @@ export const resolvers = {
 			await Category.findByIdAndDelete(id);
 			return true;
 		},
-		updateCategory: async (_, { id, name, description }) => {
+		updateCategory: async (
+			_: unknown,
+			{ id, name, description }: { id: string; name?: string | null; description?: string | null },
+			__: GraphQLContext
+		): Promise<ICategoryDocument> => {
 			assertValidId(id, 'category');
-			const update = { description };
-			if (name !== undefined) {
+			const update: Record<string, unknown> = {};
+			if (description !== undefined) {
+				update.description = description || undefined;
+			}
+			if (name !== undefined && name !== null) {
 				update.name = requireName(name, 'Category');
 			}
 			const updatedCategory = await Category.findByIdAndUpdate(id, update, { new: true });
@@ -229,14 +314,14 @@ export const resolvers = {
 	},
 
 	Risk: {
-		id: (parent) => parent._id.toString(),
-		category: async (parent, _, context) => {
+		id: (parent: IRiskDocument): string => parent._id.toString(),
+		category: async (parent: IRiskDocument, _: unknown, context: GraphQLContext): Promise<ICategoryDocument | null> => {
 			if (!parent.categoryId) return null;
 			// Use DataLoader to batch category queries and avoid N+1 problem
 			return await context.categoryLoader.load(parent.categoryId);
 		},
 	},
 	Category: {
-		id: (parent) => parent._id.toString(),
+		id: (parent: ICategoryDocument): string => parent._id.toString(),
 	},
 };

@@ -5,3 +5,5 @@ risk-manager-server/node_modules
 
 risk-manager-frontend/.env
 risk-manager-server/.env
+
+risk-manager-server/dist

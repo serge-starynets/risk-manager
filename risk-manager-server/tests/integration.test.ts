@@ -1,10 +1,12 @@
 import { beforeAll, afterAll, beforeEach, afterEach, describe, expect, it } from 'vitest';
 
 import { setupTestServer, teardownTestServer, seedTestData, resetTestDB } from './test-setup.js';
+import type { ApolloServer } from '@apollo/server';
+import type { GraphQLContext } from '../src/resolvers.js';
 
-let server;
-let createContext;
-let seeded;
+let server: ApolloServer<GraphQLContext> | undefined;
+let createContext: (() => GraphQLContext) | undefined;
+let seeded: { categories: Array<{ _id: { toString: () => string } }>; risks: Array<{ _id: { toString: () => string } }> } | undefined;
 
 describe('Integration tests', () => {
 	beforeAll(async () => {
@@ -27,6 +29,7 @@ describe('Integration tests', () => {
 	});
 
 	it('returns seeded categories with pagination info', async () => {
+		if (!server || !createContext) throw new Error('Server not initialized');
 		const res = await server.executeOperation(
 			{
 				query: `
@@ -53,16 +56,19 @@ describe('Integration tests', () => {
 		);
 
 		expect(res.body.kind).toBe('single');
-		const data = res.body.singleResult.data;
+		if (res.body.kind !== 'single') throw new Error('Expected single result');
+		const data = res.body.singleResult.data as any;
+		if (!data) throw new Error('No data returned');
 		expect(data.categories.pageInfo.totalCount).toBe(2);
 		expect(data.categories.pageInfo.hasNextPage).toBe(false);
 		expect(data.categories.pageInfo.hasPreviousPage).toBe(false);
 		expect(data.categories.edges).toHaveLength(2);
-		const names = data.categories.edges.map((edge) => edge.node.name).sort();
+		const names = data.categories.edges.map((edge: { node: { name: string } }) => edge.node.name).sort();
 		expect(names).toEqual(['Engineering', 'Operations']);
 	});
 
 	it('creates a risk and resolves category through DataLoader', async () => {
+		if (!server || !createContext) throw new Error('Server not initialized');
 		const createRes = await server.executeOperation(
 			{
 				query: `
@@ -91,7 +97,7 @@ describe('Integration tests', () => {
 				variables: {
 					name: 'New production issue',
 					description: 'A deployment failed',
-					categoryId: seeded.categories[0]._id.toString(),
+					categoryId: seeded?.categories[0]._id.toString() || '',
 					createdBy: 'tester',
 					resolved: false,
 				},
@@ -100,8 +106,11 @@ describe('Integration tests', () => {
 		);
 
 		expect(createRes.body.kind).toBe('single');
-		const createdRisk = createRes.body.singleResult.data.createRisk;
+		if (createRes.body.kind !== 'single') throw new Error('Expected single result');
+		if (createRes.body.kind !== 'single') throw new Error('Expected single result');
+		const createdRisk = (createRes.body.singleResult.data as any)?.createRisk;
 		expect(createdRisk.name).toBe('New production issue');
+		if (!seeded) throw new Error('Seeded data not available');
 		expect(createdRisk.categoryId).toBe(seeded.categories[0]._id.toString());
 
 		const queryRes = await server.executeOperation(
@@ -132,15 +141,18 @@ describe('Integration tests', () => {
 		);
 
 		expect(queryRes.body.kind).toBe('single');
-		const risks = queryRes.body.singleResult.data.risks;
+		if (queryRes.body.kind !== 'single') throw new Error('Expected single result');
+		const risks = (queryRes.body.singleResult.data as any)?.risks;
+		if (!risks) throw new Error('No risks returned');
 		expect(risks.pageInfo.totalCount).toBe(4);
 		expect(risks.pageInfo.hasNextPage).toBe(false);
 		expect(risks.edges.length).toBe(4);
-		const riskWithCategory = risks.edges.find((edge) => edge.node.id === createdRisk.id);
+		const riskWithCategory = risks.edges.find((edge: any) => edge.node.id === createdRisk.id);
 		expect(riskWithCategory.node.category.name).toBe('Engineering');
 	});
 
 	it('updates risk name and description', async () => {
+		if (!server || !createContext || !seeded) throw new Error('Server not initialized');
 		const targetRisk = seeded.risks[0];
 		const updatedName = 'DB outage mitigated';
 		const updatedDescription = 'New backup cluster online';
@@ -181,13 +193,15 @@ describe('Integration tests', () => {
 		);
 
 		expect(updateRes.body.kind).toBe('single');
-		const updatedRisk = updateRes.body.singleResult.data.updateRisk;
+		if (updateRes.body.kind !== 'single') throw new Error('Expected single result');
+		const updatedRisk = (updateRes.body.singleResult.data as any)?.updateRisk;
 		expect(updatedRisk.name).toBe(updatedName);
 		expect(updatedRisk.description).toBe(updatedDescription);
 		expect(updatedRisk.resolved).toBe(true);
 	});
 
 	it('updates category name and description', async () => {
+		if (!server || !createContext || !seeded) throw new Error('Server not initialized');
 		const targetCategory = seeded.categories[1];
 		const newName = 'Ops';
 		const newDescription = 'Process and vendor related';
@@ -213,12 +227,14 @@ describe('Integration tests', () => {
 		);
 
 		expect(updateRes.body.kind).toBe('single');
-		const updatedCategory = updateRes.body.singleResult.data.updateCategory;
+		if (updateRes.body.kind !== 'single') throw new Error('Expected single result');
+		const updatedCategory = (updateRes.body.singleResult.data as any)?.updateCategory;
 		expect(updatedCategory.name).toBe(newName);
 		expect(updatedCategory.description).toBe(newDescription);
 	});
 
 	it('successfully deletes risk', async () => {
+		if (!server || !createContext || !seeded) throw new Error('Server not initialized');
 		const targetRisk = seeded.risks[1];
 
 		const deleteRes = await server.executeOperation(
@@ -234,7 +250,8 @@ describe('Integration tests', () => {
 		);
 
 		expect(deleteRes.body.kind).toBe('single');
-		expect(deleteRes.body.singleResult.data.deleteRisk).toBe(true);
+		if (deleteRes.body.kind !== 'single') throw new Error('Expected single result');
+		expect((deleteRes.body.singleResult.data as any)?.deleteRisk).toBe(true);
 
 		const queryRes = await server.executeOperation(
 			{
@@ -251,12 +268,14 @@ describe('Integration tests', () => {
 		);
 
 		expect(queryRes.body.kind).toBe('single');
-		const risks = queryRes.body.singleResult.data.risks;
+		if (queryRes.body.kind !== 'single') throw new Error('Expected single result');
+		const risks = (queryRes.body.singleResult.data as any)?.risks;
 		expect(risks.pageInfo.totalCount).toBe(2);
-		expect(risks.edges.map((edge) => edge.node.id)).not.toContain(targetRisk._id.toString());
+		expect(risks.edges.map((edge: any) => edge.node.id)).not.toContain(targetRisk._id.toString());
 	});
 
 	it('throws meaningful error if delete risk with nonexistent id', async () => {
+		if (!server || !createContext || !seeded) throw new Error('Server not initialized');
 		const targetRisk = seeded.risks[1];
 
 		const deleteRes = await server.executeOperation(
@@ -270,7 +289,8 @@ describe('Integration tests', () => {
 			},
 			{ contextValue: createContext() }
 		);
-		expect(deleteRes.body.singleResult.errors[0].message).toBe('Invalid risk id');
+		if (deleteRes.body.kind !== 'single') throw new Error('Expected single result');
+		expect((deleteRes.body.singleResult.errors as any)?.[0]?.message).toBe('Invalid risk id');
 
 		const queryRes = await server.executeOperation(
 			{
@@ -287,12 +307,14 @@ describe('Integration tests', () => {
 		);
 
 		expect(queryRes.body.kind).toBe('single');
-		const risks = queryRes.body.singleResult.data.risks;
+		if (queryRes.body.kind !== 'single') throw new Error('Expected single result');
+		const risks = (queryRes.body.singleResult.data as any)?.risks;
 		expect(risks.pageInfo.totalCount).toBe(3);
-		expect(risks.edges.map((edge) => edge.node.id)).toContain(targetRisk._id.toString());
+		expect(risks.edges.map((edge: any) => edge.node.id)).toContain(targetRisk._id.toString());
 	});
 
 	it('successfully deletes category', async () => {
+		if (!server || !createContext || !seeded) throw new Error('Server not initialized');
 		const targetCategory = seeded.categories[1];
 
 		const deleteRes = await server.executeOperation(
@@ -308,7 +330,8 @@ describe('Integration tests', () => {
 		);
 
 		expect(deleteRes.body.kind).toBe('single');
-		expect(deleteRes.body.singleResult.data.deleteCategory).toBe(true);
+		if (deleteRes.body.kind !== 'single') throw new Error('Expected single result');
+		expect((deleteRes.body.singleResult.data as any)?.deleteCategory).toBe(true);
 
 		const queryRes = await server.executeOperation(
 			{
@@ -325,13 +348,15 @@ describe('Integration tests', () => {
 		);
 
 		expect(queryRes.body.kind).toBe('single');
-		const categories = queryRes.body.singleResult.data.categories;
+		if (queryRes.body.kind !== 'single') throw new Error('Expected single result');
+		const categories = (queryRes.body.singleResult.data as any)?.categories;
 		expect(categories.pageInfo.totalCount).toBe(1);
 		expect(categories.edges).toHaveLength(1);
 		expect(categories.edges[0].node.name).toBe('Engineering');
 	});
 
 	it('throws meaningful error if delete category with nonexistent id', async () => {
+		if (!server || !createContext || !seeded) throw new Error('Server not initialized');
 		const targetCategory = seeded.categories[0];
 
 		const deleteRes = await server.executeOperation(
@@ -345,7 +370,8 @@ describe('Integration tests', () => {
 			},
 			{ contextValue: createContext() }
 		);
-		expect(deleteRes.body.singleResult.errors[0].message).toBe('Invalid category id');
+		if (deleteRes.body.kind !== 'single') throw new Error('Expected single result');
+		expect((deleteRes.body.singleResult.errors as any)?.[0]?.message).toBe('Invalid category id');
 
 		const queryRes = await server.executeOperation(
 			{
@@ -362,8 +388,9 @@ describe('Integration tests', () => {
 		);
 
 		expect(queryRes.body.kind).toBe('single');
-		const categories = queryRes.body.singleResult.data.categories;
+		if (queryRes.body.kind !== 'single') throw new Error('Expected single result');
+		const categories = (queryRes.body.singleResult.data as any)?.categories;
 		expect(categories.pageInfo.totalCount).toBe(2);
-		expect(categories.edges.map((edge) => edge.node.id)).toContain(targetCategory._id.toString());
+		expect(categories.edges.map((edge: any) => edge.node.id)).toContain(targetCategory._id.toString());
 	});
 });

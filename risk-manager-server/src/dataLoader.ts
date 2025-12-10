@@ -1,9 +1,9 @@
 import DataLoader from 'dataloader';
-import { Category } from './models/category.js';
+import { Category, ICategoryDocument } from './models/category.js';
 import mongoose from 'mongoose';
 
-export function createCategoryLoader() {
-	return new DataLoader(async (ids) => {
+export function createCategoryLoader(): DataLoader<string | mongoose.Types.ObjectId, ICategoryDocument | null> {
+	return new DataLoader<string | mongoose.Types.ObjectId, ICategoryDocument | null>(async (ids) => {
 		// Convert string IDs to ObjectIds for MongoDB query
 		const objectIds = ids.map((id) => {
 			if (id instanceof mongoose.Types.ObjectId) {
@@ -18,7 +18,7 @@ export function createCategoryLoader() {
 		});
 
 		// Create a map for O(1) lookup
-		const categoryMap = new Map();
+		const categoryMap = new Map<string, ICategoryDocument>();
 		categories.forEach((category) => {
 			categoryMap.set(category._id.toString(), category);
 		});
