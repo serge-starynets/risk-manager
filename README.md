@@ -174,7 +174,7 @@ npm run seed-large  # Seed with large dataset for performance testing
 
 ## Testing
 
-Run the test suite:
+Run the backend integration tests suite:
 
 ```bash
 cd risk-manager-server
